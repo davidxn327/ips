@@ -1,0 +1,14 @@
+//type	id	
+//type dev id tongdao rateMbps vlan
+//type	id	id
+Switch	swname0
+Device	MU	muname0	12	10	0
+Device	IT	itname0	12	10	0
+Device	MU	muname00	12	10	0
+Device	MU	muname01	12	10	0
+Switch	swname1
+Device	MU	muname1	12	10	0
+Device	IT	itname1	12	10	0
+Device	IT	itname10	12	10	0
+Device	IT	itname11	12	10	0
+Link	swname0	swname1
