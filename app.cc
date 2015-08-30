@@ -113,13 +113,18 @@ void Sender::SendPacket()
 	timestamp.SetTimestamp(Simulator::Now());
 	packet->AddByteTag(timestamp);
 
+	string str;
+	str += this->m_devId;
+	str += "|";
+	str += this->m_vlan;
 	DeviceNameTag devTag;
-	devTag.SetDeviceName(this->m_devId);
+	devTag.SetDeviceName(str);
+	//devTag.SetDeviceName(m_devId);
 	packet->AddPacketTag(devTag);
 
-	DeviceNameTag vlanTag;
-	vlanTag.SetDeviceName(this->m_vlan);
-	packet->AddPacketTag(vlanTag);
+	//DeviceNameTag vlanTag;
+	//vlanTag.SetDeviceName(this->m_vlan);
+	//packet->AddPacketTag(vlanTag);
 
 	//m_socket->SendTo(packet, 0, InetSocketAddress(m_destAddr, m_destPort));
 	m_socket->Send(packet);
@@ -248,24 +253,36 @@ void Receiver::Receive( Ptr<Socket> socket)
 		DeviceNameTag devTag;
 		if(packet->PeekPacketTag(devTag))
 		{
-			if(devTag.GetDeviceName() == this->m_devId)
+			//if(devTag.GetDeviceName() == this->m_devId)
+			//{
+			//	continue;
+			//}
+			string str = devTag.GetDeviceName();
+			size_t found1 = str.find(this->m_devId);
+			if(found1!=std::string::npos)
 			{
 				continue;
 			}
+			size_t found2 = str.find(this->m_vlan);
+			if(found2==std::string::npos)
+			{
+				continue;
+			}
+
 		}
 
-		DeviceNameTag vlanTag;
-		if(packet->PeekPacketTag(vlanTag))
-		{
-			if(vlanTag.GetDeviceName() != this->m_vlan)
-			{
-				continue;
-			}
-		}
-		else
-		{
-			continue;
-		}
+		//DeviceNameTag vlanTag;
+		//if(packet->PeekPacketTag(vlanTag))
+		//{
+		//	if(vlanTag.GetDeviceName() != this->m_vlan)
+		//	{
+		//		continue;
+		//	}
+		//}
+		//else
+		//{
+		//	continue;
+		//}
 
 		TimestampTag time;
 		if(packet->FindFirstMatchingByteTag(time))
