@@ -9,247 +9,198 @@
 #include "ns3/bridge-module.h"
 #include "ns3/csma-module.h"
 #include "ns3/internet-module.h"
-#include "ns3/stats-module.h"
-
-#include "device.h"
-
-#define LINEMAX 512 
 
 using namespace ns3;
 using namespace std;
 
-NS_LOG_COMPONENT_DEFINE ("ips");
-
-class IPS_Simulation
+struct NodeST
 {
-private:
-	// variables
-	vector<IPS_Switch *> switches;
-	vector<IPS_Device *> devices;
-	//int swlinks[2000];
-	vector<IPS_Switch *> swlinks;//switch* <-> switch*
-	
-public:
-	void Config(string configfile);
-	void Topology();
-	void InstallApplication();
-	void Run();
-	void MakeStats();
-	void Destroy();
-
-	IPS_Simulation();
+	int id;
+	char name[32];
+	char type[8];
+	int param;
+	Ptr<Node> node;
+	NetDeviceContainer *cards;
 };
 
-IPS_Simulation::IPS_Simulation()
-{}
-
-void IPS_Simulation::Config(string configfile)
+int main(int argc, char const *argv[])
 {
-	//string configfile("scratch/ips/demo.txt")
-
-	//cout<<sizeof(swlinks)<<std::endl;
-	char line[LINEMAX];
-	string type;
-	std::ifstream ifs;
-	map<string, IPS_Switch *> map;
-	IPS_Switch *cs;
-
-	ifs.open (configfile.c_str(), std::ifstream::in);
-	while(ifs.getline(line, LINEMAX))
+	if (argc < 2)
 	{
-		if(line[0]=='\n' || line[0]=='#' || line[0]==';' || (line[0]=='/'&&line[1]=='/'))
-			continue;
-
-		type = strtok(line, "\t");
-		if(type == "Switch")
-		{
-			//type	id	
-			string id = strtok(NULL, "\t");
-			IPS_Switch *nSw = new IPS_Switch();
-			nSw->id = id;
-			switches.push_back(nSw);
-			map.insert(std::pair<string, IPS_Switch *>(nSw->id, nSw));
-			cs = nSw;
-		}
-		else if(type == "Device")
-		{
-			//type dev id tongdao rateMbps vlan
-			string devname = strtok(NULL, "\t");
-			string id = strtok(NULL, "\t");
-			string tongdao = strtok(NULL, "\t");
-			string rate = strtok(NULL, "\t");
-			string vlan = strtok(NULL, "\t");
-			IPS_Device *dev = new IPS_Device();
-
-			dev->id = id;
-			dev->type = devname;
-			dev->lushu = atoi(tongdao.c_str());
-			dev->rate = atoi(rate.c_str());
-			dev->vlan = vlan;
-			dev->sw = cs;
-			dev->start = 1;
-			dev->end = 15;
-			cs->AddDevice(dev);
-
-			devices.push_back(dev);
-
-			if(devname == "MU")
-			{}
-			else if(devname == "IT")
-			{}
-			else if(devname == "PC")
-			{}
-			else if(devname == "FC")
-			{}
-			else if(devname == "MN")
-			{}
-
-		}
-		else if(type == "Link")
-		{
-			string s0 = strtok(NULL, "\t");
-			string s1 = strtok(NULL, "\t");
-
-			swlinks.push_back(map[s0]);
-			swlinks.push_back(map[s1]);
-		}	
+		exit(0);
 	}
-}
 
-void IPS_Simulation::Topology()
-{
-	int n, m, i, j;
-	BridgeHelper bridge;
-	NetDeviceContainer allDevices;
-	NodeContainer allDevNodes;
+	std::ifstream ifs(argv[1]);
+	char line[256];
+
+	std::map<int, struct NodeST *> map;
+	NodeContainer *terminals = new NodeContainer();
+	//Ptr<NetDeviceContainer> terminalcards = CreateObject<NetDeviceContainer> ();
+	NetDeviceContainer *terminalcards = new NetDeviceContainer();
+	NodeContainer con;
+	con.Create(1);
+	while(1)
+	{
+		struct NodeST *node = (struct NodeST *)malloc(sizeof(*node));
+
+		ifs.getline(line, 256);
+		if (ifs.eof() || (line[0]=='-'))
+		{
+			break;
+		}
+		if (line[0]=='\n' || line[0]=='/')
+		{
+			continue;
+		}
+		sscanf(line, "%d %s %s %d", &node->id, node->name, node->type, &node->param);
+		//std::cout << "id: " << node->id
+		//	  << "; name: " << node->name
+		//	  << "; type: " << node->type
+		//	  << "; param: " << node->param 
+		//	  << std::endl;
+
+		Ptr<Node> objNode = CreateObject<Node>();
+		node->node = objNode;
+
+		if (strcmp(node->type, "SW")==0)
+		{
+			//std::cout << "this is switch." << std::endl;
+			NetDeviceContainer *cards = new NetDeviceContainer();
+			node->cards = cards;
+		}
+		else
+		{
+			//std::cout << "this is node: " << (node->node)->GetId() << std::endl;
+			terminals->Add(node->node);
+			node->cards = terminalcards;
+		}
+		//map.insert(node->id, node);
+		map[node->id] = node;
+	}
 
 	CsmaHelper csma;
-	csma.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(200)));
+	csma.SetChannelAttribute ("Delay", TimeValue (MicroSeconds (2)));
+	//LogComponentEnable("DropTailQueue", LOG_LEVEL_LOGIC);
+	//CsmaNetDevice::GetQueue
+	//DropTailQueue
+	//MaxPackets: DropTailQueue::m_maxPackets=100
+	//MaxBytes: DropTailQueue::m_maxBytes=100*65535
+	//csma.SetQueue("ns3::DropTailQueue",
+	//		"MaxPackets", UintegerValue (300),
+	//		"MaxBytes", UintegerValue (300 * 65535));
+	while(1) {
+		int id1, id2, rate;
+		char vlan[64];
 
-	n = switches.size();// the number of swithes
-	NetDeviceContainer swInterfaces[n]; 
-
-	for(i=0; i<n; ++i)
-	{
-		IPS_Switch *sw = switches[i];
-		Ptr<Node> swNode = sw->node;
-		//sw->SetNs3Node(&swNode);
-		sw->index = i;
-
-		m = sw->GetDeviceNum();
-		for(j=0; j<m; ++j)
+		ifs.getline(line, 256);
+		if (ifs.eof())
 		{
-			//Ptr<Node> devNode= CreateObject<Node> ();
-			IPS_Device *dev = sw->GetDevice(j);
-			Ptr<Node> devNode = dev->node;
-			//dev->SetNs3Node(&devNode);
+			break;
+		}
+		if (line[0]=='\n' || line[0]=='/')
+		{
+			continue;
+		}
+		sscanf(line, "%d %d %d %s", &id1, &id2, &rate, vlan);
+		//std::cout << "id1: " << id1
+		//	  << "; id2: " << id2 
+		//	  << "; rate: " << rate 
+		//	  << "; vlan: " << vlan 
+		//	  << std::endl;
 
-			//csma.SetChannelAttribute ("DataRate", DataRateValue(DataRate("1000Mbps")));
-			csma.SetChannelAttribute ("DataRate", DataRateValue(dev->rate*1000*1000));
-			NetDeviceContainer link = csma.Install(NodeContainer(swNode, devNode));
+		//char strRate[32];
+		//sprintf(strRate, "%dMb/s", rate);
+		//csma.SetChannelAttribute ("DataRate", DataRate (strRate));//DataRateValue (rate*1000000));
+		csma.SetChannelAttribute ("DataRate", DataRateValue (rate*1024*1024));
 
-			swInterfaces[i].Add(link.Get(0));
-			allDevices.Add(link.Get(1));
-			allDevNodes.Add(devNode);
+		//std::cout << "link 0 1:" << std::endl;
+		//std::cout << id1 << " : " << (map[id1]->node)->GetId() << std::endl;
+		//std::cout << id2 << " : " << (map[id2]->node)->GetId() << std::endl;
+
+		NetDeviceContainer link = csma.Install ( NodeContainer(map[id1]->node, map[id2]->node) );
+		map[id1]->cards->Add(link.Get(0));
+		map[id2]->cards->Add(link.Get(1));
+	}
+
+	BridgeHelper bridge;
+	for (std::map<int, struct NodeST *>::iterator it=map.begin(); it!=map.end(); ++it)
+	{
+		//std::cout << "map iteration: " << it->first << std::endl;
+		if (strcmp(it->second->type, "SW")==0)
+		{
+			bridge.Install (it->second->node, *it->second->cards);
 		}
 	}
 
-	m = swlinks.size()/2 ; // number of links between switches
-	for(i=0; i<m; ++i)
-	{
-		IPS_Switch *s0 = swlinks[2*i];
-		IPS_Switch *s1 = swlinks[2*i+1];
-		//Ptr<Node> n0 = *((Ptr<Node> *)s0->GetNs3Node());
-		Ptr<Node> n0 = s0->node;
-		//Ptr<Node> n1 = *((Ptr<Node> *)s1->GetNs3Node());
-		Ptr<Node> n1 = s1->node;
-
-		NetDeviceContainer link = csma.Install(NodeContainer(n0, n1));
-
-		swInterfaces[s0->index].Add(link.Get(0));
-		swInterfaces[s1->index].Add(link.Get(1));
-
-	}
-
-	for(i=0; i<n; ++i)
-	{
-		IPS_Switch *sw = switches[i];
-		Ptr<Node> sn = sw->node;
-		bridge.Install(sn, swInterfaces[sw->index]);
-	}
-
+	std::cout << "terminal count: " << terminals->GetN() << std::endl;
 	InternetStackHelper internet;
-	internet.Install(allDevNodes);
+	internet.Install (*terminals);
 
+	std::cout << "terminalcards count: " << terminalcards->GetN() << std::endl;
 	Ipv4AddressHelper ipv4;
-	ipv4.SetBase("10.1.1.0", "255.255.255.0");
-	ipv4.Assign(allDevices);
-
+	ipv4.SetBase ("10.1.1.0", "255.255.255.0");
+	ipv4.Assign (*terminalcards);
+	
 	Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
+	int port = 1234;
+	int endTime = 3;
+	OnOffHelper onoff ("ns3::UdpSocketFactory", Address (InetSocketAddress (Ipv4Address ("10.1.1.255"), port)));
+	PacketSinkHelper sink ("ns3::UdpSocketFactory", Address (InetSocketAddress (Ipv4Address::GetAny (), port)));
+	//onoff.Install(con.Get(0));
+	//sink.Install(con.Get(0));
 
-}
-
-void IPS_Simulation::InstallApplication()
-{
-	int i;
-	int n = devices.size();
-	for(i=0; i<n; ++i)
+	for (std::map<int, struct NodeST *>::iterator it=map.begin(); it!=map.end(); ++it)
 	{
-		devices[i]->InstallApplication();
-	}
-}
+		if (strcmp(it->second->type, "SW")==0)
+		{
+			continue;
+		}
+		else if (strcmp(it->second->type, "MU")==0)
+		{
+			std::cout << "install mu" << std::endl;
+			int pktSize = 42 + 80 * it->second->param;//98 + 2*it->second->param;
+			double rate = 8.0*pktSize/0.00025;
+			std::cout << "mu  pktsize: " << pktSize << " rate: " << rate << std::endl;
+			//onoff.SetAttribute("PacketSize", UintegerValue(pktSize));
+			//onoff.SetConstantRate (DataRate ("500kb/s"));
+			onoff.SetConstantRate (DataRate (rate), pktSize);
 
-void IPS_Simulation::Run()
-{
-	cout<<"running"<<std::endl;
+			ApplicationContainer app = onoff.Install (it->second->node);
+			app.Start (Seconds (1.0));
+			app.Stop (Seconds (endTime));
+		}
+		else if (strcmp(it->second->type, "IED")==0)
+		{
+			std::cout << "install ied" << std::endl;
+			ApplicationContainer sink1 = sink.Install (it->second->node);
+			sink1.Start (Seconds (1.0));
+			sink1.Stop (Seconds (endTime));
+		}
+		else
+		{
+			std::cout << "install pc" << std::endl;
+			int pktSize = 512;
+			double rate = it->second->param *1024*1024;
+			std::cout << "pc  pktsize: " << pktSize << " rate: " << rate << std::endl;
+			//onoff.SetAttribute("PacketSize", UintegerValue(pktSize));
+			onoff.SetConstantRate (DataRate (rate), pktSize);
+
+			ApplicationContainer app = onoff.Install (it->second->node);
+			app.Start (Seconds (1.0));
+			app.Stop (Seconds (endTime));
+		}
+
+	}
+
+	AsciiTraceHelper ascii;
+	csma.EnableAsciiAll (ascii.CreateFileStream ("IPS.tr"));
+
+	//-<nodeId>-<interfaceId>.pcap, by the "tcpdump -r" command (use "-tt")
+	csma.EnablePcapAll ("IPS", false);
+
 	Simulator::Run ();
-}
-
-void IPS_Simulation::Destroy()
-{
-	cout<<"destroy"<<std::endl;
-	Simulator::Destroy();
-}
-
-void IPS_Simulation::MakeStats()
-{
-	cout<<"report"<<std::endl;
-	int i;
-	int n = devices.size();
-
-	string outputfile = "IPS_REPORT.txt";
-	std::ofstream ofs;
-	ofs.open (outputfile.c_str(), std::ofstream::out | std::ofstream::trunc);
-
-	for(i=0; i<n; ++i)
-	{
-		double mean = devices[i]->GetStats();
-		ofs<< devices[i]->id << "\t" << mean << std::endl;
-	}
-	ofs.close();
-}
-
-// todo: modify bridge/model/bridge-net-device.cc to support vlan
-int main(int argc, char **argv)
-{
-	Time::SetResolution (Time::NS);
-	LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
-	LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
-
-	string configfile = argv[1];
-	//CommandLine cmd;
-	//cmd.AddValue ("config", "path of ns3 config file for ips", configfile);
-	
-	cout<<"start"<<std::endl;
-	IPS_Simulation ips;
-	ips.Config(configfile);
-	ips.Topology();
-	ips.InstallApplication();
-	//Simulator::Run ();
-	//Simulator::Destroy();
-	ips.Run();
-	ips.MakeStats();
-	ips.Destroy();
+	Simulator::Destroy ();
 	return 0;
 }
+

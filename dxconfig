@@ -1,0 +1,10 @@
+//node: id name type param
+0	mu0	MU	1
+1	ied0	IED	0
+2	pc0	PC	70
+3	sw0	SW	0
+--
+//link: node1 node2 rate vlan
+3	0	100	0
+3	1	100	0
+3	2	100	0
