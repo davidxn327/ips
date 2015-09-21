@@ -48,7 +48,7 @@ int main(int argc, char const *argv[])
 		{
 			break;
 		}
-		if (line[0]=='\n' || line[0]=='/')
+		if (line[0]=='\n' || line[0]=='\r' || line[0]=='/' || line[0]==0)
 		{
 			continue;
 		}
@@ -80,7 +80,16 @@ int main(int argc, char const *argv[])
 
 	CsmaHelper csma;
 	csma.SetChannelAttribute ("Delay", TimeValue (MicroSeconds (2)));
-	//LogComponentEnable("DropTailQueue", LOG_LEVEL_LOGIC);
+	
+	LogComponentEnable("DropTailQueue", LOG_LEVEL_LOGIC);
+	//ns3::CsmaNetDevice MacTxDrop
+	//AsciiTraceHelper asciiTraceHelper;
+	//Ptr<OutputStreamWrapper> stream = asciiTraceHelper.CreateFileStream ("IPS.drop");
+	//ns3TcpSocket->TraceConnectWithoutContext ("CongestionWindow", MakeBoundCallback (&CwndChange, stream));
+	//void DropTraceFun(Ptr<const Packet>)
+	//Config::Connect ("/NodeList/*/$ns3::MobilityModel/CourseChange",
+	//  MakeCallback (&CourseChangeCallback));
+	//
 	//CsmaNetDevice::GetQueue
 	//DropTailQueue
 	//MaxPackets: DropTailQueue::m_maxPackets=100
@@ -97,7 +106,7 @@ int main(int argc, char const *argv[])
 		{
 			break;
 		}
-		if (line[0]=='\n' || line[0]=='/')
+		if (line[0]=='\n' || line[0]=='\r' || line[0]=='/' || line[0]==0)
 		{
 			continue;
 		}
@@ -176,6 +185,34 @@ int main(int argc, char const *argv[])
 			ApplicationContainer sink1 = sink.Install (it->second->node);
 			sink1.Start (Seconds (1.0));
 			sink1.Stop (Seconds (endTime));
+
+			//GOOSE
+			int pktSize = 6016;
+			double rate = 8.0*pktSize/1;
+			//double rate = 8.0*pktSize/5;
+			std::cout << "mu  pktsize: " << pktSize << " rate: " << rate << std::endl;
+			onoff.SetConstantRate (DataRate (rate), pktSize);
+
+			ApplicationContainer app = onoff.Install (it->second->node);
+			app.Start (Seconds (1.2));
+			app.Stop (Seconds (endTime));
+
+			if (0) {
+				//fault happens
+				pktSize = 6016;
+				rate = 8.0*pktSize/0.002;
+				std::cout << "mu  pktsize: " << pktSize << " rate: " << rate << std::endl;
+				onoff.SetConstantRate (DataRate (rate), pktSize);
+
+				onoff.SetAttribute("MaxBytes", UintegerValue(pktSize*4));
+
+				app = onoff.Install (it->second->node);
+				app.Start (Seconds (2.0));
+				app.Stop (Seconds (endTime));
+
+				onoff.SetAttribute("MaxBytes", UintegerValue(0));
+			}
+
 		}
 		else
 		{
@@ -191,13 +228,17 @@ int main(int argc, char const *argv[])
 			app.Stop (Seconds (endTime));
 		}
 
+		std::cout << it->second->name << ": "
+		          << it->second->node->GetId() << ": "
+			  << it->second->cards->Get(0)->GetAddress() << std::endl;
+
 	}
 
 	AsciiTraceHelper ascii;
 	csma.EnableAsciiAll (ascii.CreateFileStream ("IPS.tr"));
 
 	//-<nodeId>-<interfaceId>.pcap, by the "tcpdump -r" command (use "-tt")
-	csma.EnablePcapAll ("IPS", false);
+	//csma.EnablePcapAll ("IPS", false);
 
 	Simulator::Run ();
 	Simulator::Destroy ();
